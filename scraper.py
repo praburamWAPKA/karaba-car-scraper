@@ -1,114 +1,90 @@
-#!/usr/bin/env python3
-"""
-Scrape https://m.karaba.co.kr car listings (pages 1–2750) to CSV.
-
-CSV columns:
-    seq,title,year,km,transmission,price,image_url,safe_url
-"""
 import csv
 import re
-import sys
+import requests
 import time
-from html import unescape
 from pathlib import Path
 
-import requests
-
+UA = "Mozilla/5.0 (Linux; Android 10)"
 BASE_PAGE = "https://m.karaba.co.kr/?m=sale&s=list&p={page}"
-SAFE_URL = "https://photo5.autosale.co.kr/safe.php?seq={seq}&t=kimko"
-UA = (
-    "Mozilla/5.0 (Linux; Android 10; Pixel 5) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/115.0.0.0 Mobile Safari/537.36"
-)
+BASE_SAFE = "https://photo5.autosale.co.kr/safe.php?seq={seq}&t=kimko"
+CSV_PATH = Path("karaba.csv")
 
-# pre‑compiled regexes for speed
 RE_CARD = re.compile(
-    r'<a href="/\?m=sale&s=detail&seq=(\d{10})".+?'
-    r'<img[^>]+src="([^"]+)"[^>]*>.+?'
-    r'<div class="cartitle">(.*?)</div>.+?'
-    r'<div class="carinfo">(.*?)</div>.+?'
-    r'<div><div class="money">(.*?)</div>',
-    re.S,
+    r'<a href="[^"]*seq=(\d+)">.*?<div class="cartitle">(.*?)</div>.*?<div class="carinfo">(.*?)</div>.*?<div class="money">(.*?)<span',
+    re.DOTALL
 )
-RE_INFO = re.compile(r"(\d{4}).*?([\d,]+)km.*?(Automatic|Manual|CVT|DCT|Stick)", re.I)
-RE_PRICE_NUM = re.compile(r"[\d,]+")
 
-
-def clean_html(text: str) -> str:
-    """Strip tags & HTML entities, collapse whitespace."""
-    text = re.sub(r"<[^>]+>", "", text)
-    return re.sub(r"\s+", " ", unescape(text)).strip()
-
-
-def parse_card(match: re.Match[str]) -> dict:
-    seq, img, raw_title, raw_info, raw_price = match.groups()
-    title = clean_html(raw_title)
-    info = clean_html(raw_info)
-    year = km = transmission = ""
-
-    m = RE_INFO.search(info.replace("ㆍ", " "))
-    if m:
-        year, km, transmission = m.groups()
-
-    price = RE_PRICE_NUM.search(raw_price)
-    price = price.group().replace(",", "") if price else ""
-
+def parse_card(match: re.Match) -> dict:
+    seq, title, info, price = match.groups()
+    title = re.sub(r"<[^>]+>", "", title).strip().replace("\xa0", " ")
+    info = re.sub(r"<[^>]+>", "", info).strip().replace("\xa0", " ")
+    price = re.sub(r"[^\d]", "", price)
     return {
         "seq": seq,
+        "url": BASE_SAFE.format(seq=seq),
         "title": title,
-        "year": year,
-        "km": km,
-        "transmission": transmission,
-        "price": price,
-        "image_url": img,
-        "safe_url": SAFE_URL.format(seq=seq),
+        "info": info,
+        "price": price
     }
 
-
-def scrape_page(page: int) -> list[dict]:
+def scrape_page_with_retry(page: int) -> list[dict]:
     url = BASE_PAGE.format(page=page)
-    resp = requests.get(url, headers={"User-Agent": UA}, timeout=15)
-    resp.raise_for_status()
-    html = resp.text
-    return [parse_card(m) for m in RE_CARD.finditer(html)]
+    while True:
+        try:
+            resp = requests.get(url, headers={"User-Agent": UA}, timeout=15)
+            html = resp.text
 
-
-def main() -> None:
-    out_file = Path("karaba_listings.csv")
-    fieldnames = [
-        "seq",
-        "title",
-        "year",
-        "km",
-        "transmission",
-        "price",
-        "image_url",
-        "safe_url",
-    ]
-    with out_file.open("w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-
-        total = 0
-        for p in range(1, 2751):
-            try:
-                cards = scrape_page(p)
-            except Exception as e:
-                print(f"[Page {p}] ⚠️  error: {e}", file=sys.stderr)
+            if "세션에러" in html:
+                print(f"[Page {page}] ⚠️Oops..IP blocked..!!!! i know you are poor to buy rotational residental proxies, please run this script locally on your computer, if ip blocked simply turn off and on the router to get a new IP.")
+                print(f"[Page {page}] ⏳ hurry up Waiting 60 seconds before retrying... if its beyond increase the sleep time")
+                time.sleep(60)
                 continue
 
-            if not cards:
-                print(f"[Page {p}] (empty) – stopping early")
-                break
+            return [parse_card(m) for m in RE_CARD.finditer(html)]
 
-            writer.writerows(cards)
-            total += len(cards)
-            print(f"[Page {p}] ✓ {len(cards)} cars (total {total})")
-            time.sleep(1.2)  # be polite – adjust if needed
+        except requests.RequestException as e:
+            print(f"[Page {page}] ⚠️ Request error: {e}")
+            print(f"[Page {page}] 🔄 Please turn off and on the router to get a new IP.")
+            print(f"[Page {page}] ⏳ Waiting 60 seconds before retrying...")
+            time.sleep(60)
 
-    print(f"\n✅ Finished. Saved {total} rows to {out_file}")
+def load_existing_seqs() -> set:
+    if not CSV_PATH.exists():
+        return set()
+    with open(CSV_PATH, newline="", encoding="utf-8") as f:
+        return set(row["seq"] for row in csv.DictReader(f))
 
+def save_to_csv(rows: list[dict]):
+    file_exists = CSV_PATH.exists()
+    with open(CSV_PATH, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["seq", "url", "title", "info", "price"])
+        if not file_exists:
+            writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+def main():
+    existing = load_existing_seqs()
+    start_page = 1
+    if existing:
+        print("🔁 Resuming from last saved page…")
+        max_seq = max(map(int, existing))
+    else:
+        max_seq = 0
+
+    for p in range(start_page, 2751):
+        print(f"[Page {p}] Scraping…")
+        cards = scrape_page_with_retry(p)
+        if not cards:
+            print(f"[Page {p}] (empty) – stopping early")
+            break
+        new_cards = [c for c in cards if c["seq"] not in existing]
+        if not new_cards:
+            print(f"[Page {p}] All items already saved – skipping")
+            continue
+        save_to_csv(new_cards)
+        print(f"[Page {p}] ✅ Saved {len(new_cards)} new items")
+        time.sleep(1)
 
 if __name__ == "__main__":
     main()
