@@ -1,3 +1,13 @@
+Disclaimer This project is for educational and research purposes only.
+
+The developer is not affiliated with Autowini.com.
+
+The developer is not responsible for any misuse, abuse, or violation of terms of service.
+
+The code is provided as-is without warranty of any kind.
+
+You are solely responsible for using this tool ethically and legally.
+
 # 🚗 karaba-car-scraper
 
 A Python script to scrape used car listings from [Karaba (m.karaba.co.kr)](https://m.karaba.co.kr) including details like title, specs, and price. The scraped data is saved to a CSV file. This scraper uses only `requests` and `BeautifulSoup`, no Selenium or browser automation needed.
