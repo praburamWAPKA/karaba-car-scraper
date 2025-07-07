@@ -5,7 +5,7 @@ It combines `requests`, `BeautifulSoup`, `wget`, and **Tor** for IP rotation—n
 
 > **Disclaimer**
 > This project is provided **for educational and research purposes only**.
-> The developer is **not affiliated with Karaba, Autosale, or Autowini.com**, nor responsible for any misuse, abuse, or Terms‑of‑Service violations arising from this code.
+> The developer is **not affiliated with Karaba , nor responsible for any misuse, abuse, or Terms‑of‑Service violations arising from this code.
 > Use it **ethically, responsibly, and legally**.
 > The code is supplied *as‑is* without warranty of any kind.
 
