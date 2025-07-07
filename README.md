@@ -86,6 +86,9 @@ $ cd karaba‑car‑scraper
 $ torsocks python3 scraper.py
 ```
 
+![image](https://github.com/user-attachments/assets/4996209a-92cb-4842-9b2e-833c0dc0691f)
+
+
 Logs will stream to stdout.  New rows are appended to **karaba.csv**.
 
 ---
